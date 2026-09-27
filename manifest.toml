@@ -1,0 +1,141 @@
+schema_version = 1
+plugin_name = "twosamplemr"
+
+[image]
+reference = "ghcr.io/auto-nomics/autonomics/twosamplemr@sha256:c270de9978906ee48cbba2ac484ba3df9e86dddc69efd908c6f908963114002a"
+tag = "0.7.9"
+upstream = "official R TwoSampleMR 0.7.9 @ MRCIEU/TwoSampleMR tag v0.7.9 (commit 3d119f2) plus official PLINK2 2.0.0-a.6.26 (chrchang/plink-ng, plink2_linux_avx2)"
+license = "MIT"
+
+# The 1000G EUR binary PLINK reference serves the main node's clumping
+# stage (the panel pin the legacy wrapper carried as
+# PLINK2_REF_BINARY_PANEL after the plink2 migration). The v0 panel DSL
+# is family-scoped, so the harmonise node — which reads no reference
+# panel — still carries the binding and must have it bound in the DAG
+# (the ldsc_munge precedent); its script never touches /panels.
+[[panels]]
+binding = "plink_ref"
+mount = "/panels/plink_ref"
+bundle = "wjixiang/catalog-plink-ref-1000g-eur-binary"
+
+# Legacy defaults: DEFAULT_TIMEOUT_SECS = 1800 and
+# DEFAULT_ARTIFACT_PREFIX = "/artifacts/twosamplemr_container"; the
+# prefix drops the `_container` suffix together with the kind (the
+# wave-wide `/artifacts/{kind}` convention). Both were per-instance
+# spec fields in the legacy wrapper; the plugin DSL bakes them as fixed
+# node-level values.
+[[nodes]]
+kind = "twosamplemr"
+desc = "Runs official TwoSampleMR in an ephemeral OCI container."
+doc = """
+Runs the official R TwoSampleMR 0.7.9 package. Input is one SNP-merged
+tab-separated File with exposure and outcome effects, SEs, alleles, EAF,
+and optional exposure p-values (columns snp, beta_exposure, se_exposure,
+effect_allele_exposure, other_allele_exposure, eaf_exposure,
+beta_outcome, se_outcome, effect_allele_outcome, other_allele_outcome,
+eaf_outcome, optional pval_exposure). When clump is on, instruments are
+selected with official PLINK2 --clump against the 1000G EUR catalog
+panel (all autosomes by default, or the single chr submitted); then
+TwoSampleMR harmonises alleles and runs the selected methods. The node
+publishes the official MR table, the harmonised table, the full RDS
+result, and the combined PLINK2/R execution log. Every entry of
+method_list must be an official TwoSampleMR method name.
+"""
+timeout_secs = 1800
+artifact_prefix = "/artifacts/twosamplemr"
+
+[nodes.ports]
+inputs = [{ type = "file" }]
+outputs = [
+  { path = "twosamplemr_results.tsv", format = "tsv" },
+  { path = "twosamplemr_harmonised.tsv", format = "tsv" },
+  { path = "twosamplemr.RDS", format = "r_rds" },
+  { path = "twosamplemr.log", format = "twosamplemr_log" },
+]
+
+[nodes.params]
+id_exposure = { type = "string", doc = "Trait identifier stamped onto id.exposure (e.g. an IEU GWAS id); cannot be empty" }
+exposure = { type = "string", doc = "Trait name stamped onto exposure; cannot be empty" }
+id_outcome = { type = "string", doc = "Trait identifier stamped onto id.outcome; cannot be empty" }
+outcome = { type = "string", doc = "Trait name stamped onto outcome; cannot be empty" }
+# DSL gap: the legacy spec validated SUPPORTED_METHODS membership in
+# Rust; the v0 param vocabulary has no enum type, so the script rejects
+# unknown names with the legacy message (coloc/deseq2 precedent).
+method_list = { type = "string_array", default = ["mr_egger_regression", "mr_weighted_median", "mr_ivw", "mr_simple_mode", "mr_weighted_mode"], min_len = 1, doc = "TwoSampleMR method names passed to mr(method_list=); each must be an official method (mr_wald_ratio, mr_two_sample_ml, mr_egger_regression, mr_egger_regression_bootstrap, mr_simple_median, mr_weighted_median, mr_penalised_weighted_median, mr_ivw, mr_ivw_radial, mr_ivw_mre, mr_ivw_fe, mr_simple_mode, mr_weighted_mode, mr_weighted_mode_nome, mr_simple_mode_nome, mr_sign, mr_uwr, mr_grip)" }
+harmonise_action = { type = "int", default = 2, min = 1.0, max = 3.0, doc = "Allele harmonisation action passed to harmonise_data(): 1 keep, 2 flip (default), 3 drop discordants" }
+clump = { type = "bool", default = true, doc = "Select independent instruments with official PLINK2 against the 1000G EUR panel before harmonisation; false feeds every input SNP straight to TwoSampleMR" }
+clump_p1 = { type = "number", default = 5e-8, exclusive_min = 0.0, max = 1.0, doc = "Index-SNP p-value threshold (PLINK2 --clump-p1); genome-wide significant by default" }
+clump_p2 = { type = "number", default = 1e-6, exclusive_min = 0.0, max = 1.0, doc = "Secondary p-value threshold for clumped SNPs (PLINK2 --clump-p2); must be >= clump_p1" }
+clump_r2 = { type = "number", default = 0.001, exclusive_min = 0.0, max = 1.0, doc = "Maximum LD r-squared between clumped SNPs (PLINK2 --clump-r2)" }
+clump_kb = { type = "int", default = 10000, exclusive_min = 0.0, doc = "Clumping distance window in kb (PLINK2 --clump-kb)" }
+chr = { type = "int", optional = true, min = 1.0, max = 22.0, doc = "Optional 1-based chromosome to clump (1..=22); omit to iterate over all autosomes" }
+
+[nodes.command]
+interpreter = "sh"
+script_file = "scripts/mr.sh"
+
+[nodes.command.env]
+TWOSAMPLEMR_ID_EXPOSURE = "{{ id_exposure }}"
+TWOSAMPLEMR_EXPOSURE = "{{ exposure }}"
+TWOSAMPLEMR_ID_OUTCOME = "{{ id_outcome }}"
+TWOSAMPLEMR_OUTCOME = "{{ outcome }}"
+TWOSAMPLEMR_METHOD_LIST = "{{ method_list }}"
+TWOSAMPLEMR_HARMONISE_ACTION = "{{ harmonise_action }}"
+TWOSAMPLEMR_CLUMP = "{{ clump }}"
+TWOSAMPLEMR_CLUMP_P1 = "{{ clump_p1 }}"
+TWOSAMPLEMR_CLUMP_P2 = "{{ clump_p2 }}"
+TWOSAMPLEMR_CLUMP_R2 = "{{ clump_r2 }}"
+TWOSAMPLEMR_CLUMP_KB = "{{ clump_kb }}"
+TWOSAMPLEMR_CHR = "{{ chr }}"
+
+# Legacy defaults: DEFAULT_TIMEOUT_SECS = 600 and
+# DEFAULT_ARTIFACT_PREFIX = "/artifacts/twosamplemr_harmonise" (again
+# minus the `_container` suffix). The legacy wrapper attached no panels
+# to this node; the family-level plink_ref binding propagates anyway
+# (see the [[panels]] note above).
+[[nodes]]
+kind = "twosamplemr_harmonise"
+desc = "Harmonises exposure and outcome sumstats via official TwoSampleMR, emitting the merged snake_case TSV that `twosamplemr` accepts."
+doc = """
+Two-file harmoniser. Input port 0 is an exposure summary-statistics TSV
+(any layout TwoSampleMR::read_exposure_data can parse); input port 1 is
+an outcome summary-statistics TSV (any layout
+TwoSampleMR::read_outcome_data can parse). The node calls
+TwoSampleMR::harmonise_data and rewrites the native dotted column names
+(SNP, beta.exposure, ...) to snake_case (snp, beta_exposure, ...) so the
+output is directly consumable by the `twosamplemr` node. Output port 0
+is the merged TSV; output port 1 is the run log. No reference panel is
+read, but the family-level plink_ref binding must still be bound in the
+DAG (v0 plugin panels are family-scoped).
+"""
+timeout_secs = 600
+artifact_prefix = "/artifacts/twosamplemr_harmonise"
+
+[nodes.ports]
+inputs = [{ type = "file" }, { type = "file" }]
+outputs = [
+  { path = "harmonised.tsv", format = "tsv" },
+  { path = "harmonise.log", format = "twosamplemr_log" },
+]
+
+[nodes.params]
+id_exposure = { type = "string", doc = "Trait identifier stamped onto id.exposure; cannot be empty" }
+exposure = { type = "string", doc = "Trait name stamped onto exposure; cannot be empty" }
+id_outcome = { type = "string", doc = "Trait identifier stamped onto id.outcome; cannot be empty" }
+outcome = { type = "string", doc = "Trait name stamped onto outcome; cannot be empty" }
+harmonise_action = { type = "int", default = 2, min = 1.0, max = 3.0, doc = "Allele harmonisation action passed to harmonise_data(): 1 keep, 2 flip (default), 3 drop discordants" }
+units_exposure = { type = "string", optional = true, doc = "Optional free-text units label stamped onto units.exposure in the harmonised table; empty keeps whatever read_exposure_data found" }
+units_outcome = { type = "string", optional = true, doc = "Optional units.outcome label; same semantics as units_exposure" }
+
+[nodes.command]
+interpreter = "Rscript"
+script_file = "scripts/harmonise.sh"
+
+[nodes.command.env]
+TWOSAMPLEMR_ID_EXPOSURE = "{{ id_exposure }}"
+TWOSAMPLEMR_EXPOSURE = "{{ exposure }}"
+TWOSAMPLEMR_ID_OUTCOME = "{{ id_outcome }}"
+TWOSAMPLEMR_OUTCOME = "{{ outcome }}"
+TWOSAMPLEMR_HARMONISE_ACTION = "{{ harmonise_action }}"
+TWOSAMPLEMR_UNITS_EXPOSURE = "{{ units_exposure }}"
+TWOSAMPLEMR_UNITS_OUTCOME = "{{ units_outcome }}"
