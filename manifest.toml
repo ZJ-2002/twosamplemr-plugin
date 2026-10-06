@@ -2,7 +2,7 @@ schema_version = 1
 plugin_name = "twosamplemr"
 
 [image]
-reference = "ghcr.io/auto-nomics/autonomics/twosamplemr@sha256:c270de9978906ee48cbba2ac484ba3df9e86dddc69efd908c6f908963114002a"
+reference = "ghcr.io/zj-2002/twosamplemr@sha256:4ffdb4669c558228a74895bf843bc723341e8837e7fdd367108654b5514e3f99"
 tag = "0.7.9"
 upstream = "official R TwoSampleMR 0.7.9 @ MRCIEU/TwoSampleMR tag v0.7.9 (commit 3d119f2) plus official PLINK2 2.0.0-a.6.26 (chrchang/plink-ng, plink2_linux_avx2)"
 license = "MIT"
