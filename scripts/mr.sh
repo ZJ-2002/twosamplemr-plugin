@@ -84,10 +84,34 @@ supported <- c("mr_wald_ratio", "mr_two_sample_ml", "mr_egger_regression", "mr_e
 for (method in method_list) {
   if (!(method %in% supported)) stop(paste0("unsupported TwoSampleMR method `", method, "`"), call. = FALSE)
 }
+# Seed contract (WO-R-03): in v0.7.9 the stochastic method families all
+# consume the global R RNG only inside mr() — mr_weighted_median and
+# mr_simple_median via weighted_median_bootstrap (nboot = 1000), the mode
+# family via its boot() (mr_mode.R), and mr_egger_regression_bootstrap via
+# a vectorised rnorm matrix. harmonise_data reads no RNG. Therefore
+# RNGkind + set.seed immediately before the mr() call below makes every
+# bootstrap quantity deterministic for a given input, while deterministic
+# methods (ivw, egger, wald ratio, mre/fe) are unaffected by the seed.
+# The RNGkind triple mirrors the frozen host canonical runs recorded in the
+# MRlap seed1 acceptance (Mersenne-Twister / Inversion / Rejection).
+# An empty TWOSAMPLEMR_SEED reproduces the pre-fix unseeded behaviour.
+seed_raw <- Sys.getenv("TWOSAMPLEMR_SEED")
+seed_int <- NA_integer_
+if (nzchar(seed_raw)) {
+  seed_int <- suppressWarnings(as.integer(seed_raw))
+  if (is.na(seed_int) || seed_int < 1L || seed_int > 2147483647L) {
+    stop(paste0("seed must be an integer in 1..2147483647, got `", seed_raw, "`"), call. = FALSE)
+  }
+}
 sink(log_path, split = TRUE, append = TRUE)
 cat("TwoSampleMR:", as.character(packageVersion("TwoSampleMR")), "\n")
 cat("Selected instruments:", length(unique(exposure_dat$SNP)), "\n")
+cat("RNG seed:", if (nzchar(seed_raw)) seed_raw else "unset", "\n")
 harmonised <- TwoSampleMR::harmonise_data(exposure_dat, outcome_dat, action = as.numeric(Sys.getenv("TWOSAMPLEMR_HARMONISE_ACTION")))
+if (nzchar(seed_raw)) {
+  RNGkind("Mersenne-Twister", "Inversion", "Rejection")
+  set.seed(seed_int)
+}
 estimates <- TwoSampleMR::mr(harmonised, method_list = method_list)
 print(estimates)
 sink()

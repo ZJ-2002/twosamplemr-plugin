@@ -39,7 +39,10 @@ panel (all autosomes by default, or the single chr submitted); then
 TwoSampleMR harmonises alleles and runs the selected methods. The node
 publishes the official MR table, the harmonised table, the full RDS
 result, and the combined PLINK2/R execution log. Every entry of
-method_list must be an official TwoSampleMR method name.
+method_list must be an official TwoSampleMR method name. Bootstrap
+quantities (median SEs, mode estimates/SEs, egger bootstrap) consume the
+R global RNG seeded from `seed` immediately before `mr()`, so runs with
+the same seed and input are bit-for-bit reproducible.
 """
 timeout_secs = 1800
 artifact_prefix = "/artifacts/twosamplemr"
@@ -69,6 +72,15 @@ clump_p2 = { type = "number", default = 1e-6, exclusive_min = 0.0, max = 1.0, do
 clump_r2 = { type = "number", default = 0.001, exclusive_min = 0.0, max = 1.0, doc = "Maximum LD r-squared between clumped SNPs (PLINK2 --clump-r2)" }
 clump_kb = { type = "int", default = 10000, exclusive_min = 0.0, doc = "Clumping distance window in kb (PLINK2 --clump-kb)" }
 chr = { type = "int", optional = true, min = 1.0, max = 22.0, doc = "Optional 1-based chromosome to clump (1..=22); omit to iterate over all autosomes" }
+# Seed contract (WO-R-03): the default makes the stochastic method families
+# (weighted/simple median bootstrap SE, mode family, egger bootstrap)
+# bit-for-bit reproducible; the script freezes RNGkind to
+# Mersenne-Twister/Inversion/Rejection immediately before mr(), mirroring the
+# MRlap seed1 host canonical convention. Deterministic methods are
+# unaffected. Runs made before this parameter existed are unseeded legacy
+# results (LEGACY_SEEN): re-running them with the default seed may shift
+# bootstrap SEs within MC noise — that is the fix, not a regression.
+seed = { type = "int", default = 1, min = 1.0, max = 2147483647.0, doc = "Integer passed to R's set.seed() immediately before mr(); governs every bootstrap quantity in the stochastic methods. 1 by default; must be in 1..2147483647" }
 
 [nodes.command]
 interpreter = "sh"
@@ -87,6 +99,7 @@ TWOSAMPLEMR_CLUMP_P2 = "{{ clump_p2 }}"
 TWOSAMPLEMR_CLUMP_R2 = "{{ clump_r2 }}"
 TWOSAMPLEMR_CLUMP_KB = "{{ clump_kb }}"
 TWOSAMPLEMR_CHR = "{{ chr }}"
+TWOSAMPLEMR_SEED = "{{ seed }}"
 
 # Legacy defaults: DEFAULT_TIMEOUT_SECS = 600 and
 # DEFAULT_ARTIFACT_PREFIX = "/artifacts/twosamplemr_harmonise" (again

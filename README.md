@@ -148,3 +148,7 @@ name = "twosamplemr"
 git = "git@github.com:auto-nomics/twosamplemr-plugin.git"
 rev = "<pinned commit SHA>"
 ```
+- `test_seed_determinism.sh` — WO-R-03 functional test (added 2026-10-06):
+  seeded double runs byte-identical, cross-seed deterministic columns fixed,
+  unseeded legacy drift reproduced, out-of-range seed rejected; runs against
+  the pinned image, no build required
