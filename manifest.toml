@@ -47,6 +47,15 @@ the same seed and input are bit-for-bit reproducible.
 timeout_secs = 1800
 artifact_prefix = "/artifacts/twosamplemr"
 
+# Matches the A-acceptance container profile exactly (2 CPU / 2 GiB /
+# isolated network / no runtime pull) - previously only the acceptance
+# harness carried these; the family contract now declares them.
+[nodes.resources]
+cpus = 2.0
+memory = "2Gi"
+network = "isolated"
+pull_policy = "missing"
+
 [nodes.ports]
 inputs = [{ type = "file" }]
 outputs = [
